@@ -41,6 +41,7 @@ function containerArrival(data) {
             container_type = ?,
             is_dangerous = ?,
             current_slot = ?,
+            departure_slot = NULL,
             arrival_time = datetime('now', 'localtime'),
             estimated_departure_time = ?,
             actual_departure_time = NULL,
@@ -110,21 +111,23 @@ function containerDeparture(containerNo, operator) {
   }
 
   const transaction = db.transaction(() => {
-    slotService.releaseSlot(container.current_slot);
+    const slotBeforeDeparture = container.current_slot;
+    slotService.releaseSlot(slotBeforeDeparture);
 
     db.prepare(`
       UPDATE containers 
       SET status = 'departed',
           current_slot = NULL,
+          departure_slot = ?,
           actual_departure_time = datetime('now', 'localtime'),
           updated_at = datetime('now', 'localtime')
       WHERE container_no = ?
-    `).run(containerNo);
+    `).run(slotBeforeDeparture, containerNo);
 
     db.prepare(`
       INSERT INTO move_records (container_no, from_slot, to_slot, move_type, operator, reason)
       VALUES (?, ?, NULL, '出场', ?, '集装箱出场放行')
-    `).run(containerNo, container.current_slot, operator || 'system');
+    `).run(containerNo, slotBeforeDeparture, operator || 'system');
   });
 
   transaction();

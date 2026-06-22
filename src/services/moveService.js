@@ -34,20 +34,9 @@ function moveContainer(containerNo, targetSlot, operator, reason) {
     throw new Error(`目标堆位 ${targetSlot} 已被封闭，无法使用`);
   }
 
-  if (targetSlotInfo.container_type !== container.container_type) {
-    throw new Error(`目标堆位 ${targetSlot} 为 ${targetSlotInfo.container_type} 箱型，与集装箱箱型 ${container.container_type} 不匹配`);
-  }
-
-  const normalZones = ['A', 'B', 'C'];
-  const dangerousZones = ['D', 'E'];
-  const targetZone = targetSlotInfo.zone;
-
-  if (container.is_dangerous && normalZones.includes(targetZone)) {
-    throw new Error(`危险品集装箱不能放入普通区 ${targetZone} 区`);
-  }
-
-  if (!container.is_dangerous && dangerousZones.includes(targetZone)) {
-    throw new Error(`普通集装箱不能放入危险品区 ${targetZone} 区`);
+  const validation = slotService.validateMoveTarget(container, targetSlotInfo);
+  if (!validation.valid) {
+    throw new Error(validation.reason);
   }
 
   const transaction = db.transaction(() => {

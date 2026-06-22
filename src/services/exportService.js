@@ -30,7 +30,9 @@ function exportDepartureList(params = {}) {
   const query = `
     SELECT 
       container_no as containerNo,
-      current_slot as slot,
+      COALESCE(departure_slot, current_slot) as slot,
+      departure_slot as departureSlot,
+      current_slot as currentSlot,
       fee_status as feeStatus,
       inspection_status as inspectionStatus,
       inspection_conclusion as inspectionConclusion,

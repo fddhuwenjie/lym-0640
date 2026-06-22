@@ -42,6 +42,7 @@ function initDatabase() {
       is_dangerous INTEGER DEFAULT 0,
       status TEXT DEFAULT 'in_yard',
       current_slot TEXT,
+      departure_slot TEXT,
       arrival_time TEXT,
       estimated_departure_time TEXT,
       actual_departure_time TEXT,
@@ -95,6 +96,18 @@ function initDatabase() {
       created_by TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS zone_configs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      container_type TEXT NOT NULL,
+      is_dangerous INTEGER NOT NULL,
+      zone TEXT NOT NULL,
+      priority INTEGER NOT NULL,
+      slot_container_type TEXT NOT NULL,
+      remark TEXT,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      UNIQUE(container_type, is_dangerous, zone, priority)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_containers_status ON containers(status);
     CREATE INDEX IF NOT EXISTS idx_containers_fee_status ON containers(fee_status);
     CREATE INDEX IF NOT EXISTS idx_slots_zone ON slots(zone);
@@ -102,10 +115,53 @@ function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_fee_records_container ON fee_records(container_no);
   `);
 
+  try {
+    db.prepare('ALTER TABLE containers ADD COLUMN departure_slot TEXT').run();
+  } catch (e) {}
+
   const slotCount = db.prepare('SELECT COUNT(*) as count FROM slots').get().count;
   if (slotCount === 0) {
     initSlots();
   }
+
+  const configCount = db.prepare('SELECT COUNT(*) as count FROM zone_configs').get().count;
+  if (configCount === 0) {
+    initZoneConfigs();
+  }
+}
+
+function initZoneConfigs() {
+  const configs = [
+    { container_type: '20GP',   is_dangerous: 0, zone: 'A', priority: 1, slot_container_type: '20GP', remark: '首选区' },
+
+    { container_type: '40GP',   is_dangerous: 0, zone: 'B', priority: 1, slot_container_type: '40GP', remark: '首选区' },
+    { container_type: '40GP',   is_dangerous: 0, zone: 'C', priority: 2, slot_container_type: '40HQ', remark: '备选区(40HQ兼容40GP)' },
+
+    { container_type: '40HQ',   is_dangerous: 0, zone: 'C', priority: 1, slot_container_type: '40HQ', remark: '首选区' },
+    { container_type: '40HQ',   is_dangerous: 0, zone: 'B', priority: 2, slot_container_type: '40GP', remark: '备选区(40GP兼容40HQ)' },
+
+    { container_type: '20GP',   is_dangerous: 1, zone: 'D', priority: 1, slot_container_type: '20GP', remark: '危险品首选区' },
+
+    { container_type: '40GP',   is_dangerous: 1, zone: 'E', priority: 1, slot_container_type: '40GP', remark: '危险品首选区' },
+    { container_type: '40GP',   is_dangerous: 1, zone: 'D', priority: 2, slot_container_type: '20GP', remark: '危险品备选区(不允许-仅D为20GP,实际会被危险品校验过滤)' },
+
+    { container_type: '40HQ',   is_dangerous: 1, zone: 'E', priority: 1, slot_container_type: '40GP', remark: '危险品首选区(E区40GP堆位兼容40HQ)' },
+  ];
+
+  const insertConfig = db.prepare(`
+    INSERT INTO zone_configs 
+      (container_type, is_dangerous, zone, priority, slot_container_type, remark)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+
+  const transaction = db.transaction(() => {
+    for (const cfg of configs) {
+      insertConfig.run(cfg.container_type, cfg.is_dangerous, cfg.zone, cfg.priority, cfg.slot_container_type, cfg.remark);
+    }
+  });
+
+  transaction();
+  console.log('堆区分配规则初始化完成');
 }
 
 function initSlots() {
